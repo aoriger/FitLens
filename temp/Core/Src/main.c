@@ -83,18 +83,16 @@ void Display_Write(uint8_t cmd) {
     HAL_GPIO_WritePin(DISP_CS_PORT, DISP_CS, GPIO_PIN_SET); // deselect display
 }
 
-
-// Helper: Convert NMEA lat/lon (ddmm.mmmm) to decimal degrees
+// convert NMEA (ddmm.mmmm) to lat/lon degrees
 double nmea_to_decimal(const char* nmea, char dir) {
-	double val = atof(nmea);
-	int deg = (int)(val / 100);
-	double min = val - deg * 100;
-	double dec = deg + min / 60.0;
-	if(dir == 'S' || dir == 'W') dec = -dec;
+	double val = atof(nmea); // string to double
+	int degrees = (int)(val / 100);
+	double minutes = val - degrees * 100;
+	double dec = degrees + minutes / 60.0;
+	if(dir == 'S' || dir == 'W') dec = -dec; // convention-may want to keep letters later
 	return dec;
 }
 
-// Parse GPGGA (satellites, lat, lon, altitude)
 void parse_GPGGA(char* sentence) {
 	char* token;
 	int field = 0;
@@ -104,7 +102,7 @@ void parse_GPGGA(char* sentence) {
 	while(token) {
 		field++;
 		switch(field) {
-			case 2: break; // UTC time (we parse from GPRMC)
+			case 2: break;
 			case 3: strcpy(lat, token); break;
 			case 4: ns = token[0]; break;
 			case 5: strcpy(lon, token); break;
@@ -120,7 +118,6 @@ void parse_GPGGA(char* sentence) {
 	altitude_m = atof(alt);
 }
 
-// Parse GPRMC (UTC time, speed)
 void parse_GPRMC(char* sentence) {
 	char* token;
 	int field = 0;
@@ -131,11 +128,10 @@ void parse_GPRMC(char* sentence) {
 		field++;
 		switch(field) {
 			case 2: strcpy(time_str, token); break;
-			case 8: strcpy(speed, token); break; // speed in knots
+			case 8: strcpy(speed, token); break;
 		}
 		token = strtok(NULL, ",");
 	}
-	// Parse hhmmss
 	char h[3], m[3], s[3];
 	strncpy(h, time_str, 2); h[2] = '\0';
 	strncpy(m, time_str+2, 2); m[2] = '\0';
@@ -147,18 +143,18 @@ void parse_GPRMC(char* sentence) {
 	speed_mph = speed_knots * 1.150779;
 }
 
-// UART callback
+// called when UART receive completes in interrupt mode
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if(huart->Instance == USART1) {
-	if(gps_rx_byte == '\n') {
-	gps_buffer[gps_index] = '\0';
-	if(strncmp(gps_buffer, "$GPGGA", 6) == 0) parse_GPGGA(gps_buffer);
-	else if(strncmp(gps_buffer, "$GPRMC", 6) == 0) parse_GPRMC(gps_buffer);
-	gps_index = 0;
-	} else if(gps_index < GPS_BUFFER_SIZE - 1) {
-	gps_buffer[gps_index++] = gps_rx_byte;
-	}
-	HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
+		if(gps_rx_byte == '\n') {
+			gps_buffer[gps_index] = '\0';
+			if(strncmp(gps_buffer, "$GPGGA", 6) == 0) parse_GPGGA(gps_buffer);
+			else if(strncmp(gps_buffer, "$GPRMC", 6) == 0) parse_GPRMC(gps_buffer);
+			gps_index = 0;
+		} else if(gps_index < GPS_BUFFER_SIZE - 1) {
+			gps_buffer[gps_index++] = gps_rx_byte;
+		}
+		HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
 	}
 }
 
@@ -197,6 +193,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC_Init();
   /* USER CODE BEGIN 2 */
+
   ssd1306_Init();
   // Start UART receive interrupt
   HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
@@ -210,50 +207,40 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      /* Toggle LED on PA5 */
 
-
-
-
-	 // test writing text
-//	 ssd1306_Fill(Black);
-//	 ssd1306_SetCursor(35, 20);
-//	 ssd1306_WriteString("Speed:", Font_6x8, White);
-//	 ssd1306_SetCursor(35, 30);
-//	 ssd1306_WriteString("Time", Font_6x8, White);
-//	 ssd1306_UpdateScreen();
-//	 HAL_Delay(1000);
-
-
+	 // display time and speed on first two lines
 	 char buf[32];
-	 sprintf(buf, "%.2f mph", speed_mph);  // speed in knots
-	 ssd1306_SetCursor(35, 20);
-	 ssd1306_WriteString(buf, Font_6x8, White);
-
-	 // Display Time
-	 sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+	 sprintf(buf, "%.2f mph", speed_mph);
 	 ssd1306_SetCursor(35, 30);
 	 ssd1306_WriteString(buf, Font_6x8, White);
 
-	 // Optionally display satellites and altitude
+	 sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+	 ssd1306_SetCursor(35, 20);
+	 ssd1306_WriteString(buf, Font_6x8, White);
+
+	 // display number of satellites and altitude on next two lines
 //	 sprintf(buf, "Sat: %d", satellites);
 //	 ssd1306_SetCursor(35, 40);
 //	 ssd1306_WriteString(buf, Font_6x8, White);
 
+ //	 sprintf(buf, "Alt: %.1f", altitude_m);
+ //	 ssd1306_SetCursor(35, 50);
+ //	 ssd1306_WriteString(buf, Font_6x8, White);
+
+	 // display coords
 	 sprintf(buf, "%.1f|%.1f", latitude, longitude);
 	 ssd1306_SetCursor(35, 40);
 	 ssd1306_WriteString(buf, Font_6x8, White);
 
-//	 sprintf(buf, "Alt: %.1f", altitude_m);
-//	 ssd1306_SetCursor(35, 50);
-//	 ssd1306_WriteString(buf, Font_6x8, White);
-
+	 // get values from 2 ADC channels
 	 HAL_ADC_Start(&hadc);
      HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
      uint32_t adcLight = HAL_ADC_GetValue(&hadc);
      HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
      uint32_t adcTouch = HAL_ADC_GetValue(&hadc);
-     HAL_ADC_Stop(&hadc);
+     HAL_ADC_Stop(&hadc); // might not be needed
+
+     // modify display brightness in three stages based on observed thresholds - tune up later
      if (adcLight > 3500) {
 		 Display_Write(0x81); // set contrast/brightness
 		 Display_Write(0xFF); // max brightness
@@ -264,6 +251,8 @@ int main(void)
     	 Display_Write(0x81); // set contrast/brightness
     	 Display_Write(0x00); // lowest brightness
      }
+
+     // display light and touch sensor values for observation
 	 sprintf(buf, "%lu %lu", adcLight, adcTouch);
 	 ssd1306_SetCursor(35, 50);
 	 ssd1306_WriteString(buf, Font_6x8, White);
