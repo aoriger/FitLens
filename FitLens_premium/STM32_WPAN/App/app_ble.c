@@ -94,7 +94,7 @@ typedef struct _tSecurityParams
    * requirements.
    * 0x00 : no security required
    * 0x01 : host should initiate security by sending the slave security
-   *        request command
+   * request command
    * 0x02 : host need not send the clave security request but it
    * has to wait for paiirng to complete before doing any other
    * processing
@@ -144,6 +144,13 @@ typedef struct _tBLEProfileGlobalContext
    * the UUID list to be used while advertising
    */
   uint8_t advtServUUID[100];
+
+  /**
+   * HRM Service Handles
+   */
+  uint16_t hrm_serv_start_handle;
+  uint16_t hrm_serv_end_handle;
+  uint16_t hrm_char_value_handle;
 } BleGlobalContext_t;
 
 typedef struct
@@ -198,7 +205,7 @@ static const uint8_t a_MBdAddr[BD_ADDR_SIZE_LOCAL] =
 
 static uint8_t a_BdAddrUdn[BD_ADDR_SIZE_LOCAL];
 /**
-*   Identity root key used to derive IRK and DHK(Legacy)
+* Identity root key used to derive IRK and DHK(Legacy)
 */
 static const uint8_t a_BLE_CfgIrValue[16] = CFG_BLE_IR;
 
@@ -407,7 +414,100 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
         switch (blecore_evt->ecode)
         {
           /* USER CODE BEGIN ecode */
+          case ACI_ATT_READ_BY_TYPE_RESP_VSEVT_CODE:
+          {
+              aci_att_read_by_type_resp_event_rp0 *pr = (void*)blecore_evt->data;
+              
+              // 1. The characteristic handle is in bytes 0 and 1 of the data array
+              // Note: The structure member is Handle_Value_Pair_Data, NOT Data
+              uint16_t attr_handle = pr->Handle_Value_Pair_Data[0] | (pr->Handle_Value_Pair_Data[1] << 8);
+              
+              // 2. The Value Handle is in bytes 3 and 4
+              uint16_t value_handle = pr->Handle_Value_Pair_Data[3] | (pr->Handle_Value_Pair_Data[4] << 8);
+              
+              // 3. The CCCD (Client Characteristic Configuration Descriptor) is always Value Handle + 1
+              uint16_t cccd_handle = value_handle + 1; 
 
+              APP_DBG_MSG("Found HR Char. Value Handle: 0x%04X. Writing to CCCD: 0x%04X\n\r", value_handle, cccd_handle);
+
+              // 4. Enable Notifications (Write 0x0001 to CCCD)
+              uint8_t enable_notif[2] = {0x01, 0x00};
+              
+              aci_gatt_write_char_desc(BleApplicationContext.BleApplicationContext_legacy.connectionHandle,
+                                      cccd_handle,
+                                      2,
+                                      enable_notif);
+          }
+          break;
+
+          case ACI_ATT_FIND_BY_TYPE_VALUE_RESP_VSEVT_CODE:
+          {
+            aci_att_find_by_type_value_resp_event_rp0 *pr = (void*)blecore_evt->data;
+            
+            BleApplicationContext.BleApplicationContext_legacy.hrm_serv_start_handle = 
+              pr->Attribute_Group_Handle_Pair[0].Found_Attribute_Handle;
+              
+            BleApplicationContext.BleApplicationContext_legacy.hrm_serv_end_handle = 
+              pr->Attribute_Group_Handle_Pair[0].Group_End_Handle;
+
+            APP_DBG_MSG("-- HRM SERVICE FOUND Handle=0x%04X End=0x%04X --\n\r", 
+              BleApplicationContext.BleApplicationContext_legacy.hrm_serv_start_handle,
+              BleApplicationContext.BleApplicationContext_legacy.hrm_serv_end_handle);
+          }
+          break;
+
+          case ACI_GATT_DISC_READ_CHAR_BY_UUID_RESP_VSEVT_CODE:
+          {
+            aci_gatt_disc_read_char_by_uuid_resp_event_rp0 *pr = (void*)blecore_evt->data;
+            
+            /* The Attribute_Value contains: [Properties (1B)] [Value Handle (2B)] [UUID (2/16B)] */
+            uint16_t value_handle = pr->Attribute_Value[1] | (pr->Attribute_Value[2] << 8);
+
+            APP_DBG_MSG("-- GATT : CHAR FOUND Handle=0x%04X, ValHandle=0x%04X -- \n\r", pr->Attribute_Handle, value_handle);
+            
+             BleApplicationContext.BleApplicationContext_legacy.hrm_char_value_handle = value_handle;
+          }
+          break;
+
+          case ACI_GATT_PROC_COMPLETE_VSEVT_CODE:
+          {
+            aci_gatt_proc_complete_event_rp0 *pr = (void*)blecore_evt->data;
+            APP_DBG_MSG("GATT Procedure Complete. Status: 0x%02X\n", pr->Error_Code);
+
+            /* If we just finished searching for the Service, now search for the Char */
+            if (BleApplicationContext.BleApplicationContext_legacy.hrm_serv_start_handle != 0 &&
+                BleApplicationContext.BleApplicationContext_legacy.hrm_serv_end_handle != 0)
+            {
+               APP_DBG_MSG("** SEARCHING FOR HR CHAR (0x2A37) ** \n\r");
+               UUID_t uuid_hr;
+               uuid_hr.UUID_16 = 0x2A37;
+               
+               aci_gatt_disc_char_by_uuid(BleApplicationContext.BleApplicationContext_legacy.connectionHandle,
+                   BleApplicationContext.BleApplicationContext_legacy.hrm_serv_start_handle,
+                   BleApplicationContext.BleApplicationContext_legacy.hrm_serv_end_handle,
+                   0x01,
+                   &uuid_hr);
+               
+               BleApplicationContext.BleApplicationContext_legacy.hrm_serv_start_handle = 0;
+               BleApplicationContext.BleApplicationContext_legacy.hrm_serv_end_handle = 0;
+            }
+            
+            /* If we just finished searching for the Char, now Enable Notifications */
+            else if (BleApplicationContext.BleApplicationContext_legacy.hrm_char_value_handle != 0)
+            {
+               uint16_t cccd_handle = BleApplicationContext.BleApplicationContext_legacy.hrm_char_value_handle + 1;
+               APP_DBG_MSG("** ENABLING NOTIFICATIONS (CCCD=0x%04X) ** \n\r", cccd_handle);
+               
+               uint8_t enable_notif[2] = {0x01, 0x00};
+               aci_gatt_write_char_desc(BleApplicationContext.BleApplicationContext_legacy.connectionHandle,
+                                      cccd_handle,
+                                      2,
+                                      enable_notif);
+                                      
+               BleApplicationContext.BleApplicationContext_legacy.hrm_char_value_handle = 0;
+            }
+          }
+          break;
           /* USER CODE END ecode */
 
           case ACI_GAP_PROC_COMPLETE_VSEVT_CODE:
@@ -459,10 +559,10 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
 
             APP_DBG_MSG("-- HR VALUE RECEIVED: %d BPM -- \n\r", heart_rate);
             
-            /* --- OUTPUT TO YOUR DISPLAY --- */
-            /* Assuming you have a function like this defined in main.c */
+            /* SUPPRESS WARNING: variable set but not used */
+            (void)heart_rate;
+
             // Update_SPI_Display(heart_rate); 
-            }
           }
           break;
 
@@ -542,6 +642,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
             /* USER CODE END ecode_default */
             break;
         }
+
       }
       break;
 
@@ -554,7 +655,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
         {
           BleApplicationContext.BleApplicationContext_legacy.connectionHandle = 0;
           BleApplicationContext.Device_Connection_Status = APP_BLE_IDLE;
-          APP_DBG_MSG("\r\n\r** DISCONNECTION EVENT WITH SERVER \n\r");
+          APP_DBG_MSG("\r\n\r** DISCONNECTION EVENT WITH SERVER, Reason: 0x%02X ** \n\r", cc->Reason);
           handleNotification.P2P_Evt_Opcode = PEER_DISCON_HANDLE_EVT;
           handleNotification.ConnectionHandle = BleApplicationContext.BleApplicationContext_legacy.connectionHandle;
           P2PC_APP_Notification(&handleNotification);
@@ -587,20 +688,23 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
             BleApplicationContext.Device_Connection_Status = APP_BLE_CONNECTED_CLIENT;
 
             /* CONNECTION WITH CLIENT */
-            APP_DBG_MSG("\r\n\r**  CONNECTION COMPLETE EVENT WITH SERVER \n\r");
+            APP_DBG_MSG("\r\n\r** CONNECTION COMPLETE EVENT WITH SERVER \n\r");
             handleNotification.P2P_Evt_Opcode = PEER_CONN_HANDLE_EVT;
             handleNotification.ConnectionHandle = BleApplicationContext.BleApplicationContext_legacy.connectionHandle;
             P2PC_APP_Notification(&handleNotification);
 
-            result = aci_gatt_disc_all_primary_services(BleApplicationContext.BleApplicationContext_legacy.connectionHandle);
-            if (result == BLE_STATUS_SUCCESS)
+            /* ROBUST DISCOVERY: Step 1 - Find the Service First */
+            UUID_t uuid_hr_serv;
+            uuid_hr_serv.UUID_16 = 0x180D; 
+            
+            APP_DBG_MSG("\r\n\r** SEARCHING FOR HRM SERVICE (0x180D) ** \n\r");
+            
+            result = aci_gatt_disc_primary_service_by_uuid(BleApplicationContext.BleApplicationContext_legacy.connectionHandle,
+                      0x01, &uuid_hr_serv);
+
+            if (result != BLE_STATUS_SUCCESS)
             {
-              APP_DBG_MSG("\r\n\r** GATT SERVICES & CHARACTERISTICS DISCOVERY  \n\r");
-              APP_DBG_MSG("* GATT :  Start Searching Primary Services \r\n\r");
-            }
-            else
-            {
-              APP_DBG_MSG("BLE_CTRL_App_Notification(), All services discovery Failed \r\n\r");
+              APP_DBG_MSG("BLE_CTRL_App_Notification(), HR Service discovery Failed \r\n\r");
             }
             break; /* HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE */
 
@@ -616,17 +720,19 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
 
               event_data_size = le_advertising_event->Advertising_Report[0].Length_Data;
 
-              /* WARNING: be careful when decoding advertising report as its raw format cannot be mapped on a C structure.
-              The data and RSSI values could not be directly decoded from the RAM using the data and RSSI field from hci_le_advertising_report_event_rp0 structure.
-              Instead they must be read by using offsets (please refer to BLE specification).
-              RSSI = (int8_t)*(uint8_t*) (adv_report_data + le_advertising_event->Advertising_Report[0].Length_Data);
-              */
               adv_report_data = (uint8_t*)(&le_advertising_event->Advertising_Report[0].Length_Data) + 1;
               k = 0;
+              
+              /* Debug: Print that we saw a packet from this address */
+              APP_DBG_MSG("Scan: Device %02X:%02X:%02X:%02X:%02X:%02X, RSSI: %d\n\r",
+                  le_advertising_event->Advertising_Report[0].Address[5],
+                  le_advertising_event->Advertising_Report[0].Address[4],
+                  le_advertising_event->Advertising_Report[0].Address[3],
+                  le_advertising_event->Advertising_Report[0].Address[2],
+                  le_advertising_event->Advertising_Report[0].Address[1],
+                  le_advertising_event->Advertising_Report[0].Address[0],
+                  le_advertising_event->Advertising_Report[0].RSSI);
 
-              /* search AD TYPE 0x09 (Complete Local Name) */
-              /* search AD Type 0x02 (16 bits UUIDS) */
-              if (event_type == ADV_IND)
               {
                 /* ISOLATION OF BD ADDRESS AND LOCAL NAME */
 
@@ -648,30 +754,19 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
                       /* USER CODE END AD_TYPE_TX_POWER_LEVEL */
                       break;
 
-                    case AD_TYPE_MANUFACTURER_SPECIFIC_DATA: /* Manufacturer Specific */
-                      /* USER CODE BEGIN AD_TYPE_MANUFACTURER_SPECIFIC_DATA */
-
-                      /* USER CODE END AD_TYPE_MANUFACTURER_SPECIFIC_DATA */
-                      if (adlength >= 7 && adv_report_data[k + 2] == 0x01)
-                      { /* ST VERSION ID 01 */
-                        APP_DBG_MSG("--- ST MANUFACTURER ID --- \n\r");
-                        switch (adv_report_data[k + 3])
-                        {   /* Demo ID */
-                           case CFG_DEV_ID_P2P_SERVER1: /* End Device 1 */
-                           APP_DBG_MSG("-- SERVER DETECTED -- VIA MAN ID\n\r");
-                           BleApplicationContext.DeviceServerFound = 0x01;
-                           SERVER_REMOTE_ADDR_TYPE = le_advertising_event->Advertising_Report[0].Address_Type;
-                           SERVER_REMOTE_BDADDR[0] = le_advertising_event->Advertising_Report[0].Address[0];
-                           SERVER_REMOTE_BDADDR[1] = le_advertising_event->Advertising_Report[0].Address[1];
-                           SERVER_REMOTE_BDADDR[2] = le_advertising_event->Advertising_Report[0].Address[2];
-                           SERVER_REMOTE_BDADDR[3] = le_advertising_event->Advertising_Report[0].Address[3];
-                           SERVER_REMOTE_BDADDR[4] = le_advertising_event->Advertising_Report[0].Address[4];
-                           SERVER_REMOTE_BDADDR[5] = le_advertising_event->Advertising_Report[0].Address[5];
-                           break;
-
-                          default:
-                            break;
-                        }
+                    case AD_TYPE_SHORTENED_LOCAL_NAME:
+                    case AD_TYPE_COMPLETE_LOCAL_NAME:
+                      {
+                        /* Found a name, let's print it */
+                        char name[32];
+                        uint8_t len = adlength - 1;
+                        if(len > 31) len = 31;
+                        
+                        memcpy(name, &adv_report_data[k+2], len);
+                        name[len] = '\0';
+                        
+                        APP_DBG_MSG("Scan: Name: %s\n\r", name);
+                        
                       }
                       break;
 
@@ -691,7 +786,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
 
                         if (uuid == HRM_SERVICE_UUID) //if we've connected to a HR service
                         {
-                          APP_DBG_MSG("-- HRM DEVICE FOUND! -- \n\r");
+                          APP_DBG_MSG("-- HRM DEVICE FOUND! UUID: 0x180D. STOPPING SCAN... -- \n\r");
                           BleApplicationContext.DeviceServerFound = 0x01;
 
                           /* Store the device address so we can connect later */
@@ -703,6 +798,9 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
                           SERVER_REMOTE_BDADDR[3] = le_advertising_event->Advertising_Report[0].Address[3];
                           SERVER_REMOTE_BDADDR[4] = le_advertising_event->Advertising_Report[0].Address[4];
                           SERVER_REMOTE_BDADDR[5] = le_advertising_event->Advertising_Report[0].Address[5];
+
+                          /* Stop Scanning immediately as we found a candidate */
+                          aci_gap_terminate_gap_proc(GAP_GENERAL_DISCOVERY_PROC);
                         }
 
                         i += 2; //move to the next 16 bit address
@@ -1011,7 +1109,7 @@ static void Scan_Request(void)
     /* USER CODE BEGIN BLE_SCAN_SUCCESS */
 
     /* USER CODE END BLE_SCAN_SUCCESS */
-      APP_DBG_MSG(" \r\n\r** START GENERAL DISCOVERY (SCAN) **  \r\n\r");
+      APP_DBG_MSG(" \r\n\r** START GENERAL DISCOVERY (SCAN) ** \r\n\r");
     }
     else
     {
@@ -1034,10 +1132,10 @@ static void Connect_Request(void)
   /* USER CODE END Connect_Request_1 */
   tBleStatus result;
 
-  APP_DBG_MSG("\r\n\r** CREATE CONNECTION TO SERVER **  \r\n\r");
+  APP_DBG_MSG("\r\n\r** CREATE CONNECTION TO SERVER ** \r\n\r");
 
   if (BleApplicationContext.Device_Connection_Status != APP_BLE_CONNECTED_CLIENT)
-  {
+  {      
     result = aci_gap_create_connection(SCAN_P,
                                        SCAN_L,
                                        SERVER_REMOTE_ADDR_TYPE, SERVER_REMOTE_BDADDR,

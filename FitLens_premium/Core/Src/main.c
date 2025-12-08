@@ -57,7 +57,7 @@ float altitude_m;
 static uint32_t delay = 250;
 IPCC_HandleTypeDef hipcc;
 
-UART_HandleTypeDef hlpuart1;
+UART_HandleTypeDef huart1;
 
 RTC_HandleTypeDef hrtc;
 
@@ -71,7 +71,7 @@ SPI_HandleTypeDef hspi1;
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_LPUART1_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_IPCC_Init(void);
 static void MX_RTC_Init(void);
@@ -160,7 +160,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		} else if(gps_index < GPS_BUFFER_SIZE - 1) {
 			gps_buffer[gps_index++] = gps_rx_byte;
 		}
-		HAL_UART_Receive_IT(&hlpuart1, &gps_rx_byte, 1);
+		HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
 	}
 }
 /* USER CODE END 0 */
@@ -202,14 +202,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_LPUART1_UART_Init();
+  MX_USART1_UART_Init();
   MX_SPI1_Init();
   MX_RTC_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
+  char msg[] = "\r\nBOOT ALIVE: Starting BLE...\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
+
   ssd1306_Init();
   // Start UART receive interrupt
-  HAL_UART_Receive_IT(&hlpuart1, &gps_rx_byte, 1);
+  HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
@@ -241,22 +244,23 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  MX_APPE_Process();
 
-    /* -- Sample board code for User push-button in interrupt mode ---- */
-    BSP_LED_Toggle(LED_BLUE);
-    HAL_Delay(delay);
-
-    BSP_LED_Toggle(LED_GREEN);
-    HAL_Delay(delay);
-
-    BSP_LED_Toggle(LED_RED);
-    HAL_Delay(delay);
-
-    ssd1306_Fill(White);
-    ssd1306_UpdateScreen();
-    HAL_Delay(1000);
-    ssd1306_Fill(Black);
-    ssd1306_UpdateScreen();
+//    /* -- Sample board code for User push-button in interrupt mode ---- */
+//    BSP_LED_Toggle(LED_BLUE);
+//    HAL_Delay(delay);
+//
+//    BSP_LED_Toggle(LED_GREEN);
+//    HAL_Delay(delay);
+//
+//    BSP_LED_Toggle(LED_RED);
+//    HAL_Delay(delay);
+//
+//    ssd1306_Fill(White);
+//    ssd1306_UpdateScreen();
+//    HAL_Delay(1000);
+//    ssd1306_Fill(Black);
+//    ssd1306_UpdateScreen();
 
 //    // display time and speed on first two lines
 //	 char buf[32];
@@ -310,7 +314,6 @@ int main(void)
 //	 ssd1306_UpdateScreen();
 //	 HAL_Delay(1000);
     /* USER CODE END WHILE */
-    MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
   }
@@ -419,50 +422,50 @@ static void MX_IPCC_Init(void)
 }
 
 /**
-  * @brief LPUART1 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_LPUART1_UART_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN LPUART1_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END LPUART1_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  /* USER CODE BEGIN LPUART1_Init 1 */
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE END LPUART1_Init 1 */
-  hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 9600;
-  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
-  hlpuart1.Init.StopBits = UART_STOPBITS_1;
-  hlpuart1.Init.Parity = UART_PARITY_NONE;
-  hlpuart1.Init.Mode = UART_MODE_TX_RX;
-  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  hlpuart1.FifoMode = UART_FIFOMODE_DISABLE;
-  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN LPUART1_Init 2 */
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END LPUART1_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -622,6 +625,41 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+hw_status_t HW_UART_Transmit_DMA(hw_uart_id_t hw_uart_id, uint8_t *p_data, uint16_t size, void (*Callback)(void))
+{
+    /* 1. Send the data using the blocking HAL function (since we know we are using USART1) */
+    HAL_UART_Transmit(&huart1, p_data, size, 1000);
+
+    /* 2. Important: The Trace system expects a callback when "DMA" finishes.
+       Since we did it blocking, we must call it now so the trace doesn't hang. */
+    if (Callback != NULL)
+    {
+        Callback();
+    }
+
+    /* 3. Return 0 (hw_status_ok) */
+    return (hw_status_t)0;
+}
+  #ifdef __GNUC__
+  int __io_putchar(int ch)
+  #else
+  int fputc(int ch, FILE *f)
+  #endif
+  {
+      /* Use huart1 since that is what you initialized in main() */
+      HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+      return ch;
+  }
+
+//  int _write(int file, char *ptr, int len)
+//  {
+//      int i;
+//      for (i = 0; i < len; i++)
+//      {
+//          __io_putchar(*ptr++);
+//      }
+//      return len;
+//  }
 /* USER CODE END 4 */
 
 /**

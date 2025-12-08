@@ -9,8 +9,19 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
+-include Utilities/sequencer/subdir.mk
+-include Utilities/lpm/tiny_lpm/subdir.mk
+-include STM32_WPAN/Target/subdir.mk
+-include STM32_WPAN/App/subdir.mk
+-include Middlewares/ST/STM32_WPAN/utilities/subdir.mk
+-include Middlewares/ST/STM32_WPAN/interface/patterns/ble_thread/tl/subdir.mk
+-include Middlewares/ST/STM32_WPAN/interface/patterns/ble_thread/shci/subdir.mk
+-include Middlewares/ST/STM32_WPAN/ble/svc/Src/subdir.mk
+-include Middlewares/ST/STM32_WPAN/ble/core/template/subdir.mk
+-include Middlewares/ST/STM32_WPAN/ble/core/auto/subdir.mk
 -include Drivers/STM32WBxx_HAL_Driver/Src/subdir.mk
 -include Drivers/BSP/P-NUCLEO-WB55.Nucleo/subdir.mk
+-include Core/ThreadSafe/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk
@@ -61,8 +72,8 @@ all: main-build
 main-build: FitLens_premium.elf secondary-outputs
 
 # Tool invocations
-FitLens_premium.elf FitLens_premium.map: $(OBJS) $(USER_OBJS) C:\Users\aorig\STM32CubeIDE\workspace_1.19.0\FitLens_premium\STM32WB55RGVX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "FitLens_premium.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\aorig\STM32CubeIDE\workspace_1.19.0\FitLens_premium\STM32WB55RGVX_FLASH.ld" --specs=nosys.specs -Wl,-Map="FitLens_premium.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+FitLens_premium.elf FitLens_premium.map: $(OBJS) $(USER_OBJS) C:\Users\Natheir\ Abu-Dahab\Documents\University\ Work\Fall\ 25\ECE49595SD\FitLens\FitLens_premium\STM32WB55RGVX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "FitLens_premium.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Natheir Abu-Dahab\Documents\University Work\Fall 25\ECE49595SD\FitLens\FitLens_premium\STM32WB55RGVX_FLASH.ld" --specs=nosys.specs -Wl,-Map="FitLens_premium.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
