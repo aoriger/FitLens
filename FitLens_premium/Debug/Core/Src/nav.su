@@ -1,0 +1,4 @@
+../Core/Src/nav.c:12:6:Nav_Init	16	static
+../Core/Src/nav.c:17:6:Nav_ReceiveRouteOnce	24	static
+../Core/Src/nav.c:44:6:Nav_DisplayFirstInstruction	16	static
+../Core/Src/nav.c:55:6:process_instruction	16	static

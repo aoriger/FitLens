@@ -10,6 +10,8 @@
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:306:6:BSP_PB_Init	40	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:350:6:BSP_PB_DeInit	40	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:368:10:BSP_PB_GetState	16	static
+../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:388:9:BSP_JOY_Init	8	static
+../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:418:18:BSP_JOY_GetState	16	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:483:13:SPIx_MspInit	32	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:518:13:SPIx_Init	8	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:558:13:SPIx_WriteReadData	40	static
@@ -23,6 +25,8 @@
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:733:6:LCD_IO_WriteReg	16	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:754:6:LCD_IO_WriteMultipleData	24	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:810:6:LCD_Delay	16	static
+../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:823:13:ADCx_MspInit	120	static
+../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:853:26:ADCx_Init	8	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:904:9:BSP_COM_Init	24	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:942:9:BSP_COM_DeInit	24	static
 ../Drivers/BSP/P-NUCLEO-WB55.Nucleo/stm32wbxx_nucleo.c:975:26:MX_LPUART1_Init	16	static

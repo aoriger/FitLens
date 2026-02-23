@@ -22,11 +22,13 @@
 #include "stm32wbxx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "gps.h"
+extern UART_HandleTypeDef hlpuart1;
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
-
 /* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/
@@ -55,7 +57,9 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-
+extern DMA_HandleTypeDef hdma_lpuart1_rx;
+extern UART_HandleTypeDef hlpuart1;
+extern DMA_HandleTypeDef hdma_spi1_tx;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -197,6 +201,57 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32wbxx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles DMA1 channel1 global interrupt.
+  */
+void DMA1_Channel1_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_lpuart1_rx);
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel3 global interrupt.
+  */
+void DMA1_Channel3_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel3_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_spi1_tx);
+  /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles LPUART1 global interrupt.
+  */
+void LPUART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN LPUART1_IRQn 0 */
+	    if(__HAL_UART_GET_FLAG(&hlpuart1, UART_FLAG_IDLE))
+	    {
+	        __HAL_UART_CLEAR_IDLEFLAG(&hlpuart1);
+
+	        // Compute the number of received bytes
+	        uint16_t pos = GPS_RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(hlpuart1.hdmarx);
+
+	        gps_process_data(gps_rx_buf, pos);
+	    }
+
+  /* USER CODE END LPUART1_IRQn 0 */
+  HAL_UART_IRQHandler(&hlpuart1);
+  /* USER CODE BEGIN LPUART1_IRQn 1 */
+
+  /* USER CODE END LPUART1_IRQn 1 */
+}
 
 /* USER CODE BEGIN 1 */
 
