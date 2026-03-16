@@ -61,24 +61,74 @@ uint16_t adc_values[2];
 uint16_t adcLight = 0;
 uint16_t adcTouch = 0;
 
-static uint32_t last_dist_call_time = 0;
-
 extern uint32_t total_time;
 extern uint32_t time_since_update;
 extern float distance_traveled;
 extern uint32_t last_update;
 //void get_dist_and_time(float lat, float lon);
 
-//#define ROUTE_BUF_LEN 2048
-//
-//char route_buffer[ROUTE_BUF_LEN];
-//uint16_t route_index = 0;
-//volatile uint8_t route_complete = 0;
+// nav vars
+char nav_rx; // nav byte
+char nav_buffer[128];
+int nav_idx = 0;
+char nav_c;
+int done;
+int instr_idx = 0;
+float dist_to_wp;
 
-//extern USBD_HandleTypeDef hUsbDeviceFS; // Cube generated USB device
+#define MAX_WAYPOINTS 200
+#define MAX_STREET_LEN 32
+#define MAX_DIR_LEN 16
 
+float lat[MAX_WAYPOINTS];
+float lon[MAX_WAYPOINTS];
+char direction[MAX_WAYPOINTS][MAX_DIR_LEN];
+char street[MAX_WAYPOINTS][MAX_STREET_LEN];
+
+int waypoint_count = 0;
+//int scroll_x = 128;   // right edge?
+int first_run = 1;
+static int scroll_x = 128;
+
+extern UART_HandleTypeDef hcom_uart[COMn];
 
 uint8_t rx_byte;
+
+// 8x8 bitmap for right arrow
+uint8_t arrow_right[8] = {
+    0b00011000,
+    0b00001100,
+    0b11111110,
+    0b11111110,
+    0b11111110,
+    0b00001100,
+    0b00011000,
+    0b00000000
+};
+
+// 8x8 bitmap for left arrow
+uint8_t arrow_left[8] = {
+    0b00011000,
+    0b00110000,
+    0b11111110,
+    0b11111110,
+    0b11111110,
+    0b00110000,
+    0b00011000,
+    0b00000000
+};
+
+// 8x8 bitmap for straight/up arrow
+uint8_t arrow_up[8] = {
+    0b00011000,
+    0b00111100,
+    0b01111110,
+    0b00011000,
+    0b00011000,
+    0b00011000,
+    0b00011000,
+    0b00000000
+};
 
 /* USER CODE END PV */
 
@@ -105,7 +155,7 @@ void Display_Write(uint8_t cmd) {
 }
 
 void ReadSensors() {
-	// need to reconfigure every time to use blocking conversion no DMA somehow
+	// need to reconfigure every time to use blocking conversion; no DMA somehow
 	ADC_ChannelConfTypeDef sConfig = {0};
 	sConfig.Channel = ADC_CHANNEL_5;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -155,6 +205,51 @@ void Update_Brightness(uint32_t adcLight)
     Display_Write(brightness); // update to level
 }
 
+void Display_Nav() {
+
+//		 find substrings and print matching arrow
+	    if (strstr(direction[instr_idx], "right"))
+	    	ssd1306_DrawBitmap(35, 50, arrow_right, 8, 8, White);
+	    else if (strstr(direction[instr_idx], "left"))
+	    	ssd1306_DrawBitmap(35, 50, arrow_left, 8, 8, White);
+	    else if (strstr(direction[instr_idx], "straight") || strstr(direction[instr_idx], "continue"))
+	    	ssd1306_DrawBitmap(35, 50, arrow_up, 8, 8, White);
+//	     else?
+
+	int char_width = 6;
+	int screen_width = 128;
+	int left_margin = 45;
+	int gap = 30;
+
+	char* msg = street[instr_idx];
+//	char* msg = "Mitch Daniels Boulevard";
+
+	int msg_len = strlen(msg);
+	int text_width = msg_len * char_width;
+	int cycle_width = text_width + gap;
+
+	ssd1306_FillRectangle(0, 50, 127, 58, Black);
+
+	for (int copy = 0; copy < 2; copy++) {
+		int start_pos = scroll_x + (copy * cycle_width);
+
+		for (int i = 0; i < msg_len; i++) {
+			int char_x = start_pos + (i * char_width);
+			if (char_x >= left_margin && char_x <= (screen_width - char_width)) {
+				ssd1306_SetCursor(char_x, 50);
+				ssd1306_WriteChar(msg[i], Font_6x8, White);
+			}
+		}
+	}
+
+	scroll_x--;
+
+	if (scroll_x <= (left_margin - cycle_width)) {
+		scroll_x = left_margin;
+	}
+
+}
+
 void Display_Info() {
 //(time_since_update > 2000) ||
 	if ((latitude == 0.0)) { // no update in last 2 seconds
@@ -177,7 +272,8 @@ void Display_Info() {
 
     // display time and speed on lines 1/2
 	 char buf[32];
-	 sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+//	 sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+	 sprintf(buf, "%02d:%02d", hour, minute);
 	 ssd1306_SetCursor(35, 20);
 	 ssd1306_WriteString(buf, Font_6x8, White);
 
@@ -197,7 +293,68 @@ void Display_Info() {
  //	 ssd1306_SetCursor(35, 50);
  //	 ssd1306_WriteString(buf, Font_6x8, White);
 
+	 Display_Nav(); // row 4 (50)
+
 	 ssd1306_UpdateScreen();
+
+}
+
+void process_instruction(char *line)
+{
+    if (strcmp(line, "<END>") == 0)
+    {
+        return;
+    }
+
+    if (waypoint_count >= MAX_WAYPOINTS)
+        return;
+
+    char *token;
+    float temp_lat, temp_lon;
+    char temp_dir[MAX_DIR_LEN];
+    char temp_street[MAX_STREET_LEN];
+
+    token = strtok(line, ",");
+    temp_lat = atof(token);
+
+    token = strtok(NULL, ",");
+    temp_lon = atof(token);
+
+    token = strtok(NULL, ",");
+    strncpy(temp_dir, token, MAX_DIR_LEN-1);
+    temp_dir[MAX_DIR_LEN-1] = '\0';
+
+    // Distance not stored
+    token = strtok(NULL, ",");
+
+    token = strtok(NULL, ",");
+    strncpy(temp_street, token, MAX_STREET_LEN-1);
+    temp_street[MAX_STREET_LEN-1] = '\0';
+
+    // Store in arrays
+    lat[waypoint_count] = temp_lat;
+    lon[waypoint_count] = temp_lon;
+    strncpy(direction[waypoint_count], temp_dir, MAX_DIR_LEN);
+    strncpy(street[waypoint_count], temp_street, MAX_STREET_LEN);
+
+    waypoint_count++;
+}
+
+void Update_Route() {
+	float threshold = 10.0;
+
+	for (int i = 0; i < waypoint_count; i++) {
+		dist_to_wp = distance_m(latitude, longitude, lat[i], lon[i]);
+		if (dist_to_wp <= threshold) {
+			if (i+1 < waypoint_count) {
+				instr_idx = i + 1;
+			} else {
+				ssd1306_SetCursor(0, 50);
+				ssd1306_WriteString("Arrived", Font_6x8, White);
+			}
+			break;
+		}
+	}
 }
 
 /* USER CODE END 0 */
@@ -249,14 +406,12 @@ int main(void)
   HAL_UART_Receive_DMA(&hlpuart1, gps_rx_buf, GPS_RX_BUF_SIZE);
   __HAL_UART_ENABLE_IT(&hlpuart1, UART_IT_IDLE);
 
-//  BSP_COM_Receive_IT(COM1, &rx_byte, 1);
-
   /* USER CODE END 2 */
 
   /* Initialize leds */
   BSP_LED_Init(LED_GREEN);
 
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
+  /* Initialize COM5 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
   BspCOMInit.BaudRate   = 115200;
   BspCOMInit.WordLength = COM_WORDLENGTH_8B;
   BspCOMInit.StopBits   = COM_STOPBITS_1;
@@ -269,12 +424,36 @@ int main(void)
 
 
   /* USER CODE BEGIN BSP */
+  // get route
+  done = 1;// 0
+  while(!done) {
+	HAL_UART_Receive(&hcom_uart[COM1], (uint8_t*)&nav_c, 1, HAL_MAX_DELAY);
+
+	  if (nav_c == '\n')
+	  {
+		  nav_buffer[nav_idx] = '\0';
+		  process_instruction(nav_buffer);
+		  nav_idx = 0;
+		  memset(nav_buffer, 0, sizeof(nav_buffer));
+	  }
+	  else
+	  {
+		  if(nav_idx < sizeof(nav_buffer)-1)
+			  nav_buffer[nav_idx++] = nav_c;
+	  }
+
+	  if (strcmp(nav_buffer, "<END>") == 0)
+	  {
+	   done = 1;
+	  }
+  }
   /* USER CODE END BSP */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	Update_Route();
 	Display_Info();
 	ReadSensors(); // get values from 2 ADC channels - light and touch
 	Update_Brightness(adcLight);
@@ -282,13 +461,13 @@ int main(void)
 	// ------------------- testing
 
 	 // display light and touch sensor values for observation
-	 char buf[32];
-	 sprintf(buf, "%d %d", adcLight, adcTouch);
-	 ssd1306_SetCursor(35, 50);
-	 ssd1306_WriteString(buf, Font_6x8, White);
+//	 char buf[32];
+//	 sprintf(buf, "%d %d", adcLight, adcTouch);
+//	 ssd1306_SetCursor(35, 50);
+//	 ssd1306_WriteString(buf, Font_6x8, White);
 
-	 ssd1306_UpdateScreen();
-	 HAL_Delay(100);
+//	 ssd1306_UpdateScreen();
+	 HAL_Delay(30);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

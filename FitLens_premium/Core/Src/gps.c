@@ -68,7 +68,7 @@ void get_dist_and_time(float lat, float lon) {
     // compute distance segment
     float segment = distance_m(last_lat, last_lon, lat, lon);
 
-    // deadband: ignore small movements (< 40 m) - redundant with truncation
+    // deadband: ignore small movements (< 25 m)
     const float MIN_MOVE_METERS = 40.0f;
     if (segment >= MIN_MOVE_METERS) {
         distance_traveled += segment;
