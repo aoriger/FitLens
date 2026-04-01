@@ -105,6 +105,12 @@ void ssd1306_Init(void) {
     ssd1306_WriteCommand(0xA1); //--set segment re-map 0 to 127 - CHECK
 #endif
 
+//#ifdef SSD1306_MIRROR_HORIZ
+//    ssd1306_WriteCommand(0xA1); // Mirror horizontally
+//#else
+//    ssd1306_WriteCommand(0xA0); //--set segment re-map 0 to 127 - CHECK
+//#endif
+
 #ifdef SSD1306_INVERSE_COLOR
     ssd1306_WriteCommand(0xA7); //--set inverse color
 #else
