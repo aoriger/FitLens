@@ -91,9 +91,8 @@ char distance_to_turn[MAX_WAYPOINTS][MAX_DIST_LEN];
 
 int waypoint_count = 0;
 int arrived_flag = 0;
-//int scroll_x = 128;   // right edge?
 int first_run = 1;
-static int scroll_x = 128;
+static int scroll_x = 128; // right edge
 
 int final_time = 0;
 float final_dist = 0.0;
@@ -271,6 +270,7 @@ void Display_Nav() {
 		ssd1306_SetCursor(35, 50);
 		ssd1306_WriteString("Arrived", Font_6x8, White);
 		if (final_time == 0) {
+			// total_time and distance_traveled lowkey keep incrementing -- stop them
 			final_time = total_time;
 			final_dist = distance_traveled;
 		}
@@ -279,15 +279,12 @@ void Display_Nav() {
 }
 
 void Display_Info() {
-//(time_since_update > 2000) ||
-	if ((latitude == 0.0)) { // no update in last 2 seconds
 
+	if ((latitude == 0.0)) {
 		// this is kind of jank and would need to change if display fields are edited - maybe make flags
+		// also add clearing the line before writing dashed lines to completely overwrite text
 		 char buf[32];
 		 sprintf(buf, "----------------");
-//		 ssd1306_SetCursor(35, 30);
-//		 ssd1306_WriteString(buf, Font_6x8, White);
-
 		 ssd1306_SetCursor(35, 40);
 		 ssd1306_WriteString(buf, Font_6x8, White);
 	} else {
@@ -327,7 +324,7 @@ void Display_Info() {
  //	 ssd1306_SetCursor(35, 50);
  //	 ssd1306_WriteString(buf, Font_6x8, White);
 
-//	 Display_Nav(); // row 4 (50)
+	 Display_Nav(); // row 4 (50)
 
 	 ssd1306_UpdateScreen();
 
@@ -349,6 +346,7 @@ void process_instruction(char *line)
     char temp_street[MAX_STREET_LEN];
     char temp_dist[MAX_DIST_LEN];
 
+    // split string into fields
     token = strtok(line, ",");
     temp_lat = atof(token);
 
@@ -464,7 +462,7 @@ int main(void)
 
   /* USER CODE BEGIN BSP */
   // get route
-  done = 1;// 0 to turn on nav
+  done = 0;// 0 to turn on nav
 
   while(!done) {
 	HAL_UART_Receive(&hcom_uart[COM1], (uint8_t*)&nav_c, 1, HAL_MAX_DELAY);
