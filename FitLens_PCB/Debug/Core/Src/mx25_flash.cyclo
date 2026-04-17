@@ -1,0 +1,7 @@
+../Core/Src/mx25_flash.c:12:10:MX25_READID_QSPI	2
+../Core/Src/mx25_flash.c:35:6:MX25_WriteEnable	2
+../Core/Src/mx25_flash.c:53:9:MX25_ReadStatus	2
+../Core/Src/mx25_flash.c:73:6:MX25_WaitForBusy	2
+../Core/Src/mx25_flash.c:79:6:MX25_PageProgram	4
+../Core/Src/mx25_flash.c:101:6:MX25_SectorErase	3
+../Core/Src/mx25_flash.c:124:6:MX25_ReadData	3

@@ -19,8 +19,8 @@
 ../Core/Src/app_entry.c:288:13:SystemPower_Config	1
 ../Core/Src/app_entry.c:310:13:appe_Tl_Init	1
 ../Core/Src/app_entry.c:335:13:APPE_SysStatusNot	1
-../Core/Src/app_entry.c:350:13:APPE_SysUserEvtRx	8
-../Core/Src/app_entry.c:413:13:APPE_SysEvtError	2
+../Core/Src/app_entry.c:350:13:APPE_SysUserEvtRx	3
+../Core/Src/app_entry.c:413:13:APPE_SysEvtError	1
 ../Core/Src/app_entry.c:435:13:APPE_SysEvtReadyProcessing	3
 ../Core/Src/app_entry.c:516:6:HAL_Delay	3
 ../Core/Src/app_entry.c:545:6:MX_APPE_Process	1

@@ -18,13 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ssd1306_fonts.h"
+//#include "ssd1306_fonts.h"
+#include "usbd_cdc_if.h"
 #include <string.h>
 #include <stdio.h>
-#include "ssd1306.h"
+//#include "ssd1306.h"
 #include <stdlib.h>
 /* USER CODE END Includes */
 
@@ -45,6 +47,12 @@ uint8_t satellites;
 double latitude, longitude;
 float speed_knots, speed_mph;
 float altitude_m;
+
+
+#define MEM_CS_Pin GPIO_PIN_11
+#define MEM_CS_GPIO_Port GPIOB
+#define SPI1_DC_Pin GPIO_PIN_10
+#define SPI1_DC_GPIO_Port GPIOC
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,24 +65,24 @@ float altitude_m;
 static uint32_t delay = 250;
 IPCC_HandleTypeDef hipcc;
 
-UART_HandleTypeDef huart1;
+UART_HandleTypeDef hlpuart1;
+
+QSPI_HandleTypeDef hqspi;
 
 RTC_HandleTypeDef hrtc;
 
-SPI_HandleTypeDef hspi1;
-
 /* USER CODE BEGIN PV */
-
+uint32_t flash_id = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART1_UART_Init(void);
-static void MX_SPI1_Init(void);
+static void MX_LPUART1_UART_Init(void);
 static void MX_IPCC_Init(void);
 static void MX_RTC_Init(void);
+static void MX_QUADSPI_Init(void);
 static void MX_RF_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -82,12 +90,12 @@ static void MX_RF_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void Display_Write(uint8_t cmd) {
+/*void Display_Write(uint8_t cmd) {
     HAL_GPIO_WritePin(DISP_DC_PORT, DISP_DC, GPIO_PIN_RESET); // command mode
     HAL_GPIO_WritePin(DISP_CS_PORT, DISP_CS, GPIO_PIN_RESET); // select display
     HAL_SPI_Transmit(&hspi1, &cmd, 1, HAL_MAX_DELAY); // send command
     HAL_GPIO_WritePin(DISP_CS_PORT, DISP_CS, GPIO_PIN_SET); // deselect display
-}
+}*/
 
 // convert NMEA (ddmm.mmmm) to lat/lon degrees
 double nmea_to_decimal(const char* nmea, char dir) {
@@ -151,7 +159,7 @@ void parse_GPRMC(char* sentence) {
 
 // called when UART receive completes in interrupt mode
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if(huart->Instance == USART1) {
+	if(huart->Instance == LPUART1) {
 		if(gps_rx_byte == '\n') {
 			gps_buffer[gps_index] = '\0';
 			if(strncmp(gps_buffer, "$GPGGA", 6) == 0) parse_GPGGA(gps_buffer);
@@ -160,7 +168,140 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		} else if(gps_index < GPS_BUFFER_SIZE - 1) {
 			gps_buffer[gps_index++] = gps_rx_byte;
 		}
-		HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
+		HAL_UART_Receive_IT(&hlpuart1, &gps_rx_byte, 1);
+	}
+}
+
+uint32_t MX25_READID_QSPI(void){
+	QSPI_CommandTypeDef s_command = {0};
+	uint8_t id[3];
+
+	s_command.Instruction = 0x9F;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.AddressMode = QSPI_ADDRESS_NONE;
+	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+	s_command.DataMode = QSPI_DATA_1_LINE;
+	s_command.NbData = 3;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+
+	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK)
+	{
+		HAL_QSPI_Receive(&hqspi, id, HAL_QSPI_TIMEOUT_DEFAULT_VALUE);
+	}
+
+
+	return (id[0] << 16) | (id[1] << 8) | id[2];
+}
+
+void MX25_WriteEnable(void){
+	QSPI_CommandTypeDef s_command = {0};
+
+	s_command.Instruction = 0x06;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.AddressMode = QSPI_ADDRESS_NONE;
+	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+	s_command.DataMode = QSPI_DATA_NONE;
+	s_command.NbData = 0;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+	if (HAL_QSPI_Command(&hqspi, &s_command,HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK){
+		Error_Handler();
+	}
+
+}
+
+uint8_t MX25_ReadStatus(void){
+	QSPI_CommandTypeDef s_command = {0};
+	uint8_t status = 0;
+
+	s_command.Instruction = 0x05;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.AddressMode = QSPI_ADDRESS_NONE;
+	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+	s_command.DataMode = QSPI_DATA_1_LINE;
+	s_command.NbData = 1;
+	s_command.DummyCycles = 0;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK) {
+	        HAL_QSPI_Receive(&hqspi, &status, HAL_QSPI_TIMEOUT_DEFAULT_VALUE);
+	}
+	return status;
+}
+
+void MX25_WaitForBusy(void) {
+    while ((MX25_ReadStatus() & 0x01) == 0x01) {
+        HAL_Delay(1);
+    }
+}
+
+void MX25_PageProgram(uint32_t Address, uint8_t *pData, uint16_t Size){
+	QSPI_CommandTypeDef s_command = {0};
+
+	MX25_WriteEnable();
+	s_command.Instruction = 0x02;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.Address = Address;
+	s_command.AddressMode = QSPI_ADDRESS_1_LINE;
+	s_command.AddressSize = QSPI_ADDRESS_24_BITS;
+	s_command.DataMode = QSPI_DATA_1_LINE;
+	s_command.NbData = Size; //256 bytes possible
+	s_command.DummyCycles = 0;
+
+	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK) {
+	    if (HAL_QSPI_Transmit(&hqspi, pData, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+	        Error_Handler();
+	    }
+	}
+	//uses helper to wait for the chip to finish writing
+	while ((MX25_ReadStatus() & 0x01) == 0x01);
+}
+
+void MX25_SectorErase(uint32_t Address){
+	QSPI_CommandTypeDef s_command = {0};
+
+	MX25_WriteEnable();
+
+	s_command.Instruction = 0x20;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.Address = Address;
+	s_command.AddressMode = QSPI_ADDRESS_1_LINE;
+	s_command.AddressSize = QSPI_ADDRESS_24_BITS;
+	s_command.DataMode = QSPI_DATA_NONE;
+	s_command.DummyCycles = 0;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+
+	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+	    Error_Handler();
+	}
+
+	while ((MX25_ReadStatus() & 0x01) == 0x01);
+}
+
+void MX25_ReadData(uint32_t Address, uint8_t *pData, uint16_t Size){
+	QSPI_CommandTypeDef s_command = {0};
+
+	s_command.Instruction = 0x03;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.Address = Address;
+	s_command.AddressMode = QSPI_ADDRESS_1_LINE;
+	s_command.AddressSize = QSPI_ADDRESS_24_BITS;
+	s_command.DataMode = QSPI_DATA_1_LINE;
+	s_command.NbData = Size;
+	s_command.DummyCycles = 0;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK) {
+	    if (HAL_QSPI_Receive(&hqspi, pData, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+	        Error_Handler();
+	    }
 	}
 }
 /* USER CODE END 0 */
@@ -202,17 +343,116 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART1_UART_Init();
-  MX_SPI1_Init();
+  MX_LPUART1_UART_Init();
   MX_RTC_Init();
+  MX_USB_Device_Init();
+  MX_QUADSPI_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
-  char msg[] = "\r\nBOOT ALIVE: Starting BLE...\r\n";
-  HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 1000);
 
-  ssd1306_Init();
-  // Start UART receive interrupt
-  HAL_UART_Receive_IT(&huart1, &gps_rx_byte, 1);
+
+  BSP_LED_Off(LED_GREEN);
+  BSP_LED_Off(LED_RED);
+  BSP_LED_Off(LED_BLUE);
+
+
+  BSP_LED_On(LED_BLUE);
+  BSP_LED_Off(LED_BLUE);
+
+  flash_id = MX25_READID_QSPI();
+
+
+  if (flash_id == 0xC22017) {
+
+      BSP_LED_On(LED_GREEN);
+  }
+  else if (flash_id == 0x000000 || flash_id == 0xFFFFFF) {
+
+      BSP_LED_On(LED_RED);
+      BSP_LED_On(LED_BLUE);
+  }
+  else {
+
+      BSP_LED_On(LED_RED);
+  }
+
+
+    // new test
+    //uint8_t tx_buf[] = "FITLENS_SYSTEM_OK";
+    //uint8_t rx_buf[20] = {0};
+
+    //erase sector
+    //MX25_SectorErase(0x000000);
+
+    //write the string
+    //MX25_PageProgram(0x000000, tx_buf, 17);
+
+    // read the string back
+    //MX25_ReadData(0x000000, rx_buf, 17);
+
+    // usb test
+    /*char usb_msg[64];
+    int test_passed = (strcmp((char*)tx_buf, (char*)rx_buf) == 0);
+
+    if (test_passed) {
+          sprintf(usb_msg, "Storage & USB work woohoo! ID: 0xC22017\r\n");
+      } else {
+          sprintf(usb_msg, "Storage Error :( USB Link works.\r\n");
+      }
+
+    //7-1-1
+    HAL_Delay(3000);
+    CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg));
+
+    if (test_passed) {
+          while(1) { BSP_LED_On(LED_GREEN); }
+      } else {
+          while(1) {
+              BSP_LED_On(LED_RED);
+              if (rx_buf[0] == 0) BSP_LED_On(LED_BLUE);
+          }
+      }
+     */
+    /*if (strcmp((char*)tx_buf, (char*)rx_buf) == 0) {
+    if (strcmp("WRONG_STRING", (char*)rx_buf) == 0) {
+          // Works
+          while(1) {
+              BSP_LED_On(LED_GREEN);
+              BSP_LED_Off(LED_RED);
+              BSP_LED_Off(LED_BLUE);
+          }
+      } else {
+          // does not work
+          while(1) {
+              BSP_LED_On(LED_RED);
+              // If the buffer is empty (0x00) blink blue too
+              if (rx_buf[0] == 0) BSP_LED_On(LED_BLUE);
+          }
+      }
+	*/
+
+    // download gpx test
+    /*char gpx_data[] =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<gpx version=\"1.1\" creator=\"FitLens\">\n"
+        "<trk><trkseg>\n"
+        "<trkpt lat=\"40.4237\" lon=\"-86.9138\"><ele>188.0</ele></trkpt>\n"
+        "</trkseg></trk></gpx>\n";
+    MX25_SectorErase(0x000000);
+    MX25_PageProgram(0x000000, (uint8_t*)gpx_data, strlen(gpx_data));
+
+    //uint32_t flash_id = MX25_READID_QSPI();
+
+    //notifies user over USB
+    HAL_Delay(3000);
+    char prompt[128];
+    sprintf(prompt, "\r\nFitLens\r\n" "Flash ID: 0x%06lX\r\n" "Commands: [D]ownload, [E]rase, [L]ED Toggle\r\n", flash_id);
+    CDC_Transmit_FS((uint8_t*)prompt, strlen(prompt));
+
+    while(1) {
+            HAL_Delay(100);
+    }
+	*/
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
@@ -314,6 +554,7 @@ int main(void)
 //	 ssd1306_UpdateScreen();
 //	 HAL_Delay(1000);
     /* USER CODE END WHILE */
+    MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
   }
@@ -329,6 +570,14 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
+  /** Macro to configure the PLL multiplication factor
+  */
+  __HAL_RCC_PLL_PLLM_CONFIG(RCC_PLLM_DIV1);
+
+  /** Macro to configure the PLL clock source
+  */
+  __HAL_RCC_PLL_PLLSOURCE_CONFIG(RCC_PLLSOURCE_MSI);
+
   /** Configure LSE Drive Capability
   */
   HAL_PWR_EnableBkUpAccess();
@@ -342,11 +591,14 @@ void SystemClock_Config(void)
   * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE
-                              |RCC_OSCILLATORTYPE_LSE;
+                              |RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -369,6 +621,10 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
+  /** Enable MSI Auto calibration
+  */
+  HAL_RCCEx_EnableMSIPLLMode();
 }
 
 /**
@@ -383,7 +639,7 @@ void PeriphCommonClock_Config(void)
   */
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SMPS|RCC_PERIPHCLK_RFWAKEUP;
   PeriphClkInitStruct.RFWakeUpClockSelection = RCC_RFWKPCLKSOURCE_LSE;
-  PeriphClkInitStruct.SmpsClockSelection = RCC_SMPSCLKSOURCE_HSE;
+  PeriphClkInitStruct.SmpsClockSelection = RCC_SMPSCLKSOURCE_HSI;
   PeriphClkInitStruct.SmpsDivSelection = RCC_SMPSCLKDIV_RANGE1;
 
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -422,50 +678,83 @@ static void MX_IPCC_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
+  * @brief LPUART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART1_UART_Init(void)
+static void MX_LPUART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART1_Init 0 */
+  /* USER CODE BEGIN LPUART1_Init 0 */
 
-  /* USER CODE END USART1_Init 0 */
+  /* USER CODE END LPUART1_Init 0 */
 
-  /* USER CODE BEGIN USART1_Init 1 */
+  /* USER CODE BEGIN LPUART1_Init 1 */
 
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
+  /* USER CODE END LPUART1_Init 1 */
+  hlpuart1.Instance = LPUART1;
+  hlpuart1.Init.BaudRate = 115200;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
+  hlpuart1.Init.StopBits = UART_STOPBITS_1;
+  hlpuart1.Init.Parity = UART_PARITY_NONE;
+  hlpuart1.Init.Mode = UART_MODE_TX_RX;
+  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  hlpuart1.FifoMode = UART_FIFOMODE_DISABLE;
+  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
+  /* USER CODE BEGIN LPUART1_Init 2 */
 
-  /* USER CODE END USART1_Init 2 */
+  /* USER CODE END LPUART1_Init 2 */
+
+}
+
+/**
+  * @brief QUADSPI Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_QUADSPI_Init(void)
+{
+
+  /* USER CODE BEGIN QUADSPI_Init 0 */
+
+  /* USER CODE END QUADSPI_Init 0 */
+
+  /* USER CODE BEGIN QUADSPI_Init 1 */
+
+  /* USER CODE END QUADSPI_Init 1 */
+  /* QUADSPI parameter configuration*/
+  hqspi.Instance = QUADSPI;
+  hqspi.Init.ClockPrescaler = 255;
+  hqspi.Init.FifoThreshold = 1;
+  hqspi.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_NONE;
+  hqspi.Init.FlashSize = 22;
+  hqspi.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_1_CYCLE;
+  hqspi.Init.ClockMode = QSPI_CLOCK_MODE_0;
+  if (HAL_QSPI_Init(&hqspi) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN QUADSPI_Init 2 */
+
+  /* USER CODE END QUADSPI_Init 2 */
 
 }
 
@@ -534,46 +823,6 @@ static void MX_RTC_Init(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI1_Init(void)
-{
-
-  /* USER CODE BEGIN SPI1_Init 0 */
-
-  /* USER CODE END SPI1_Init 0 */
-
-  /* USER CODE BEGIN SPI1_Init 1 */
-
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 7;
-  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -587,32 +836,14 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI1_CS_GPIO_Port, SPI1_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, SPI1_DC_Pin|SPI1_RST_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pins : USB_DM_Pin USB_DP_Pin */
-  GPIO_InitStruct.Pin = USB_DM_Pin|USB_DP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF10_USB;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : SPI1_CS_Pin */
-  GPIO_InitStruct.Pin = SPI1_CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SPI1_CS_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : SPI1_DC_Pin SPI1_RST_Pin */
-  GPIO_InitStruct.Pin = SPI1_DC_Pin|SPI1_RST_Pin;
+  /*Configure GPIO pin : PC10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -628,7 +859,7 @@ static void MX_GPIO_Init(void)
 hw_status_t HW_UART_Transmit_DMA(hw_uart_id_t hw_uart_id, uint8_t *p_data, uint16_t size, void (*Callback)(void))
 {
     /* 1. Send the data using the blocking HAL function (since we know we are using USART1) */
-    HAL_UART_Transmit(&huart1, p_data, size, 1000);
+    HAL_UART_Transmit(&hlpuart1, p_data, size, 1000);
 
     /* 2. Important: The Trace system expects a callback when "DMA" finishes.
        Since we did it blocking, we must call it now so the trace doesn't hang. */
@@ -647,7 +878,7 @@ hw_status_t HW_UART_Transmit_DMA(hw_uart_id_t hw_uart_id, uint8_t *p_data, uint1
   #endif
   {
       /* Use huart1 since that is what you initialized in main() */
-      HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+      HAL_UART_Transmit(&hlpuart1, (uint8_t *)&ch, 1, 0xFFFF);
       return ch;
   }
 

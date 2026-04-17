@@ -152,7 +152,7 @@
 #define SUPERV_TIMEOUT (0x1F4)
 #define CONN_L1   (CONN_L(10))
 #define CONN_L2   (CONN_L(10))
-#define OOB_DEMO                                0   /* Out Of Box Demo */
+#define OOB_DEMO                                1   /* Out Of Box Demo */
 
 /* USER CODE BEGIN Specific_Parameters */
 
@@ -420,7 +420,7 @@
 /**
  * Select UART interfaces
  */
-#define CFG_DEBUG_TRACE_UART    hw_uart1
+#define CFG_DEBUG_TRACE_UART    0
 #define CFG_CONSOLE_MENU        0
 /******************************************************************************
  * USB interface
@@ -569,7 +569,7 @@ typedef enum
 /**
  * Enable or Disable traces in application
  */
-#define CFG_DEBUG_APP_TRACE     1
+#define CFG_DEBUG_APP_TRACE     0
 
 #if (CFG_DEBUG_APP_TRACE != 0)
 #define APP_DBG_MSG                 PRINT_MESG_DBG
@@ -615,7 +615,7 @@ typedef enum
 /**
  * When not set, the traces is looping on sending the trace over UART
  */
-#define DBG_TRACE_USE_CIRCULAR_QUEUE 0
+#define DBG_TRACE_USE_CIRCULAR_QUEUE 1
 
 /**
  * max buffer Size to queue data traces and max data trace allowed.

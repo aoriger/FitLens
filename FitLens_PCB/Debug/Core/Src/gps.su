@@ -1,0 +1,7 @@
+../Core/Src/gps.c:33:7:distance_m	48	static
+../Core/Src/gps.c:49:6:get_dist_and_time	24	static
+../Core/Src/gps.c:86:6:gps_push_char	16	static
+../Core/Src/gps.c:111:6:gps_process_data	24	static
+../Core/Src/gps.c:129:6:parse_GPGGA	96	static
+../Core/Src/gps.c:163:6:parse_GPRMC	72	static
+../Core/Src/gps.c:196:8:nmea_to_decimal	64	static

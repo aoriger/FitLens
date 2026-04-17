@@ -59,7 +59,10 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+uint32_t MX25_READID_QSPI(void);
+void MX25_SectorErase(uint32_t Address);
+void MX25_PageProgram(uint32_t Address, uint8_t *pData, uint16_t Size);
+void MX25_ReadData(uint32_t Address, uint8_t *pData, uint16_t Size);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -77,12 +80,6 @@ void Error_Handler(void);
 #define JTMS_GPIO_Port GPIOA
 #define JTCK_Pin GPIO_PIN_14
 #define JTCK_GPIO_Port GPIOA
-#define SPI1_CS_Pin GPIO_PIN_15
-#define SPI1_CS_GPIO_Port GPIOA
-#define SPI1_DC_Pin GPIO_PIN_10
-#define SPI1_DC_GPIO_Port GPIOC
-#define SPI1_RST_Pin GPIO_PIN_12
-#define SPI1_RST_GPIO_Port GPIOC
 #define JTDO_Pin GPIO_PIN_3
 #define JTDO_GPIO_Port GPIOB
 
