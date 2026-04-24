@@ -36,9 +36,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-uint16_t adc_values[2];
 uint16_t adcLight = 0;
-uint16_t adcTouch = 0;
 
 extern uint32_t total_time;
 extern uint32_t time_since_update;
@@ -75,7 +73,7 @@ static int scroll_x = 128; // right edge
 int final_time = 0;
 float final_dist = 0.0;
 
-//extern UART_HandleTypeDef hcom_uart[COMn];
+//extern UART_HandleTypeDef hlpuart1; // might not need
 
 uint8_t rx_byte;
 
@@ -125,7 +123,7 @@ ADC_HandleTypeDef hadc1;
 
 I2C_HandleTypeDef hi2c1;
 
-UART_HandleTypeDef hlpuart1;
+UART_HandleTypeDef hlpuart1; // might not need?
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_lpuart_rx;
@@ -228,12 +226,10 @@ void Display_Nav() {
 		snprintf(dist_buff, sizeof(dist_buff), "%.0fm", dist_to_wp);
 	}
 	snprintf(msg_buffer, sizeof(msg_buffer), "%s %s", dist_buff, street[instr_idx]);
-//	char* msg = msg_buffer;
+	char* msg = msg_buffer;
 
 	if (!arrived_flag) {
-
-		//	char* msg = street[instr_idx];
-			char* msg = "Mitch Daniels Boulevard";
+//			char* msg = "Mitch Daniels Boulevard";
 
 			int msg_len = strlen(msg);
 			int text_width = msg_len * char_width;
@@ -297,15 +293,15 @@ void Display_Info() {
 //	 ssd1306_SetCursor(35, 30);
 //	 ssd1306_WriteString(buf, Font_6x8, White);
 
-//	 if (!arrived_flag) {
-//		 sprintf(buf, "%03lu:%.2f", total_time, distance_traveled);
-//		 ssd1306_SetCursor(35, 30);
-//		 ssd1306_WriteString(buf, Font_6x8, White);
-//	 } else {
-//		 sprintf(buf, "%03d:%.2f", final_time, final_dist);
-//		 ssd1306_SetCursor(35, 30);
-//		 ssd1306_WriteString(buf, Font_6x8, White);
-//	 }
+	 if (!arrived_flag) {
+		 sprintf(buf, "%03lu:%.2f", total_time, distance_traveled);
+		 ssd1306_SetCursor(35, 30);
+		 ssd1306_WriteString(buf, Font_6x8, White);
+	 } else {
+		 sprintf(buf, "%03d:%.2f", final_time, final_dist);
+		 ssd1306_SetCursor(35, 30);
+		 ssd1306_WriteString(buf, Font_6x8, White);
+	 }
 
 	 // display number of satellites and altitude on lines 3/4
 //	 sprintf(buf, "Sat: %d", satellites);
@@ -448,29 +444,29 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // get route
-//   done = 1;// 0 to turn on nav
-//
-//   while(!done) {
-// 	HAL_UART_Receive(&hcom_uart[COM1], (uint8_t*)&nav_c, 1, HAL_MAX_DELAY);
-//
-// 	  if (nav_c == '\n')
-// 	  {
-// 		  nav_buffer[nav_idx] = '\0';
-// 		  process_instruction(nav_buffer);
-// 		  nav_idx = 0;
-// 		  memset(nav_buffer, 0, sizeof(nav_buffer));
-// 	  }
-// 	  else
-// 	  {
-// 		  if(nav_idx < sizeof(nav_buffer)-1)
-// 			  nav_buffer[nav_idx++] = nav_c;
-// 	  }
-//
-// 	  if (strcmp(nav_buffer, "<END>") == 0)
-// 	  {
-// 	   done = 1;
-// 	  }
-//   }
+   done = 0;// 0 to turn on nav
+
+   while(!done) {
+ 	HAL_UART_Receive(&hlpuart1, (uint8_t*)&nav_c, 1, HAL_MAX_DELAY);
+
+ 	  if (nav_c == '\n')
+ 	  {
+ 		  nav_buffer[nav_idx] = '\0';
+ 		  process_instruction(nav_buffer);
+ 		  nav_idx = 0;
+ 		  memset(nav_buffer, 0, sizeof(nav_buffer));
+ 	  }
+ 	  else
+ 	  {
+ 		  if(nav_idx < sizeof(nav_buffer)-1)
+ 			  nav_buffer[nav_idx++] = nav_c;
+ 	  }
+
+ 	  if (strcmp(nav_buffer, "<END>") == 0)
+ 	  {
+ 	   done = 1;
+ 	  }
+   }
 
   while (1)
   {
@@ -478,22 +474,26 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-//	  Update_Route();
+	  Update_Route();
 	  	Display_Info();
-	  	ReadSensors(); // get values from 2 ADC channels - light and touch
-	  	Update_Brightness(adcLight);
+	  	ReadSensors(); // just light sensor now
+//	  	Update_Brightness(adcLight);
+
+	  	Display_Write(0x81); // update brightness
+	  	Display_Write(0xFF); // update to level
 
 	  	// ------------------- testing
 
 	  	 // display light and touch sensor values for observation
-	  	 char buf[32];
-	  	 sprintf(buf, "%d", adcLight);
-	  	 ssd1306_SetCursor(35, 30);
-	  	 ssd1306_WriteString(buf, Font_6x8, White);
-
+//	  	 char buf[32];
+//	  	 sprintf(buf, "%d", adcLight);
+//	  	 ssd1306_SetCursor(35, 30);
+//	  	 ssd1306_WriteString(buf, Font_6x8, White);
+//
 	  	 ssd1306_UpdateScreen();
 	  	 HAL_Delay(30);
 
+	  	// blink LED
 //	  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 //	  HAL_Delay(500);
 //	  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);

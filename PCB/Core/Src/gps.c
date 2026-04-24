@@ -92,12 +92,18 @@ void gps_push_char(uint8_t c)
         if (gps_index == 0) return; // skip empty lines
         gps_buffer[gps_index] = '\0'; // add delimiter
 
-        // check sequence start for type
-        if (strncmp(gps_buffer, "$GNGGA", 6) == 0) {
-            parse_GPGGA(gps_buffer);
-        } else if (strncmp(gps_buffer, "$GNRMC", 6) == 0) {
-            parse_GPRMC(gps_buffer);
-        }
+        // check sequence start for type - normal
+//        if (strncmp(gps_buffer, "$GPGGA", 6) == 0) { // GPGGA???
+//            parse_GPGGA(gps_buffer);
+//        } else if (strncmp(gps_buffer, "$GPRMC", 6) == 0) {
+//            parse_GPRMC(gps_buffer);
+//        }
+        // version for circular DMA/LPUART -> strstr gets codes from midstring instead of just beginning
+        if (strstr(gps_buffer, "$GPGGA")) {
+			parse_GPGGA(gps_buffer);
+		} else if (strstr(gps_buffer, "$GPRMC")) {
+			parse_GPRMC(gps_buffer);
+		}
         gps_index = 0;
     }
     else if (gps_index < GPS_BUFFER_SIZE - 1) {
