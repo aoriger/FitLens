@@ -105,6 +105,12 @@ void ssd1306_Init(void) {
     ssd1306_WriteCommand(0xA1); //--set segment re-map 0 to 127 - CHECK
 #endif
 
+//#ifdef SSD1306_MIRROR_HORIZ
+//    ssd1306_WriteCommand(0xA1); // Mirror horizontally
+//#else
+//    ssd1306_WriteCommand(0xA0); //--set segment re-map 0 to 127 - CHECK
+//#endif
+
 #ifdef SSD1306_INVERSE_COLOR
     ssd1306_WriteCommand(0xA7); //--set inverse color
 #else
@@ -198,10 +204,13 @@ void ssd1306_UpdateScreen(void) {
  * Y => Y Coordinate
  * color => Pixel color
  */
-void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color) {
-    if(x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
-        // Don't write outside the buffer
-        return;
+void ssd1306_DrawPixel(int16_t x, int16_t y, SSD1306_COLOR color) {
+//    if(x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
+//        // Don't write outside the buffer
+//        return;
+//    }
+    if (x < 0 || x >= 128 || y < 0 || y >= 64) {
+            return;
     }
    
     // Draw in the right color
@@ -220,39 +229,33 @@ void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color) {
  */
 char ssd1306_WriteChar(char ch, SSD1306_Font_t Font, SSD1306_COLOR color) {
     uint32_t i, b, j;
-    
-    // Check if character is valid
+
     if (ch < 32 || ch > 126)
         return 0;
-    
-    // Char width is not equal to font width for proportional font
+
     const uint8_t char_width = Font.char_width ? Font.char_width[ch-32] : Font.width;
-    // Check remaining space on current line
-    if (SSD1306_WIDTH < (SSD1306.CurrentX + char_width) ||
-        SSD1306_HEIGHT < (SSD1306.CurrentY + Font.height))
-    {
-        // Not enough space on current line
-        return 0;
-    }
-    
-    // Use the font to write
+
     for(i = 0; i < Font.height; i++) {
         b = Font.data[(ch - 32) * Font.height + i];
+
         for(j = 0; j < char_width; j++) {
-            if((b << j) & 0x8000)  {
-                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR) color);
+
+            int x = SSD1306.CurrentX + j;
+            int y = SSD1306.CurrentY + i;
+
+            if (x < 0 || x >= SSD1306_WIDTH ||
+                y < 0 || y >= SSD1306_HEIGHT)
+                continue;   // pixel outside screen
+
+            if((b << j) & 0x8000) {
+                ssd1306_DrawPixel(x, y, color);
             } else {
-                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR)!color);
+                ssd1306_DrawPixel(x, y, !color);
             }
         }
     }
-    
 
-
-    // The current space is now taken
     SSD1306.CurrentX += char_width;
-    
-    // Return written char for validation
     return ch;
 }
 

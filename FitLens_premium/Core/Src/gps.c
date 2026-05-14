@@ -6,7 +6,6 @@
 
 uint8_t gps_rx_buf[GPS_RX_BUF_SIZE];
 
-// variables to keep
 uint8_t hour, minute, second;
 uint8_t satellites;
 double latitude, longitude;
@@ -17,7 +16,7 @@ uint32_t time_since_update = 0; // ms
 uint32_t HAL_GetTick(void);
 uint32_t last_update = 0;
 
-#define START_DISTANCE 15.0f // 15 meters (50 feet)
+#define START_DISTANCE 10.0f // 10 meters
 
 uint32_t start_time = 0; // ms
 uint32_t finish_time = 0;
@@ -29,10 +28,6 @@ float distance_traveled = 0.0f;
 float last_lat;
 float last_lon;
 char fix[4];
-
-#define GPS_ALPHA 0.2f // for dist averaging
-static float avg_lat = 0.0f;
-static float avg_lon = 0.0f;
 static bool initialized = false;
 
 float distance_m(float lat1, float lon1,
@@ -55,9 +50,6 @@ void get_dist_and_time(float lat, float lon) {
 
 	if (lat == 0 || lon == 0) return;  // skip invalid readings
 
-    lat = (int)(lat / 0.001f) * 0.001f;
-    lat = (int)(lon / 0.001f) * 0.001f;
-
     if (!initialized) {
         last_lat = lat;
         last_lon = lon;
@@ -68,8 +60,8 @@ void get_dist_and_time(float lat, float lon) {
     // compute distance segment
     float segment = distance_m(last_lat, last_lon, lat, lon);
 
-    // deadband: ignore small movements (< 40 m) - redundant with truncation
-    const float MIN_MOVE_METERS = 40.0f;
+    // deadband: ignore small movements (< 10 m)
+    const float MIN_MOVE_METERS = 10.0f;
     if (segment >= MIN_MOVE_METERS) {
         distance_traveled += segment;
         last_lat = lat;
